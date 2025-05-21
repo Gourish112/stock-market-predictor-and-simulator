@@ -69,14 +69,18 @@ npm start
 
 ## 📷 Screenshots
 
+### Home Page
+![Home page](./homepage%20-%20tradelens.jpeg)
 ### 📈 Stock Predictor
 
-![Stock Predictor Screenshot](./assets/screenshots/predictor.png)
+![Stock Predictor Screenshot](./predictor%20-%20tradelens.jpeg)
 
 ### 💹 Trading Simulator
 
-![Trading Simulator Screenshot](./assets/screenshots/simulator.png)
+![Trading Simulator Screenshot](./simulator%20-%20tradelens.jpeg)
 
-## Contact
-Gourish Bhatia
-gourishbhatia2004@gmail.com
+## 📬 Contact
+
+Created by **Gourish Bhatia**  
+📧 Email: gourishbhatia2004@gmail.com
+

@@ -51,8 +51,8 @@ A powerful web application built using the MERN stack that allows users to predi
 
 ### 1. Clone the repo
 ```bash
-git clone https://github.com/your-username/stock-market-predictor-simulator.git
-cd stock-market-predictor-simulator
+git clone https://github.com/Gourish112/stock-market-predictor-and-simulator
+cd stockpredictor
 ```
 ### 2. Run backend
 ```bash

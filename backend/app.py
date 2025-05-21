@@ -9,7 +9,7 @@ app = Flask(__name__)
 CORS(app)  # Allow all origins for CORS
 
 # Load the trained model
-model_path = r"C:\Users\Gourish\Desktop\stockpredictor\models\stock_model_multihorizon_keras.keras"
+model_path = "stock_model_multihorizon_keras.keras"
 model = tf.keras.models.load_model(model_path)
 
 # Portfolio Simulation Variables

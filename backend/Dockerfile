@@ -22,7 +22,7 @@ RUN pip install -r requirements.txt
 
 # Copy your backend code into the container
 COPY . .
-
+COPY stock_model_multihorizon_keras.keras stock_model_multihorizon_keras.keras
 # Expose the port (Flask uses 5000 by default)
 EXPOSE 5000
 

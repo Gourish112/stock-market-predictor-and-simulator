@@ -4,7 +4,7 @@ import { Line } from "react-chartjs-2";
 import io from "socket.io-client";
 
 // Constants
-const API_URL = "http://127.0.0.1:5000";
+const API_URL = "https://stock-market-predictor-and-simulator-82yh.onrender.com";
 const DEFAULT_TICKER = "AAPL";
 const DEFAULT_INTERVAL = "real-time";
 const DEFAULT_EXCHANGE = "US";

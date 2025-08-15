@@ -8,7 +8,7 @@ import io from "socket.io-client";
 // Use the URL of your deployed Render backend
 const API_URL = "https://stock-market-predictor-and-simulator-82yh.onrender.com";
 const DEFAULT_TICKER = "AAPL";
-const DEFAULT_INTERVAL = "real-time";
+const DEFAULT_INTERVAL = "1mo";
 const DEFAULT_EXCHANGE = "US";
 const US_STARTING_BALANCE = 10000;
 const IN_STARTING_BALANCE = 800000;

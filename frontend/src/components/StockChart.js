@@ -12,7 +12,7 @@ import {
 import { Line } from "react-chartjs-2";
 
 ChartJS.register(LineElement, PointElement, LinearScale, CategoryScale, Title, Tooltip, Legend);
-
+const API_URL = process.env.REACT_APP_API_URL;
 const StockChart = ({ ticker }) => {
     const [chartData, setChartData] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -21,7 +21,7 @@ const StockChart = ({ ticker }) => {
         const fetchStockData = async () => {
             setLoading(true);
             try {
-                const response = await fetch(`http://localhost:5000/api/predict`, {
+                const response = await fetch(`${API_URL}/api/predict`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ ticker }),

@@ -5,6 +5,7 @@ import yfinance as yf
 import tensorflow as tf
 from sklearn.preprocessing import MinMaxScaler
 from dotenv import load_dotenv
+import os
 load_dotenv()
 
 app = Flask(__name__)

@@ -2,19 +2,20 @@ const express = require("express");
 const cors = require("cors");
 const axios = require("axios");
 const { PythonShell } = require("python-shell");
-
+const { PythonShell } = require("python-shell");
+require("dotenv").config();
 const app = express();
 app.use(express.json());
 
 // ✅ Fix CORS issue
 const corsOptions = {
-    origin: "http://localhost:3000", // Allow frontend requests
+    origin: process.env.CORS_ORIGIN, // Allow frontend requests
     methods: "GET,POST",
     allowedHeaders: "Content-Type"
 };
 app.use(cors(corsOptions));
 
-const PORT = 5000;
+const PORT = process.env.PORT;
 
 // Route to fetch real-time stock data
 app.get("/api/stock/:ticker", async (req, res) => {

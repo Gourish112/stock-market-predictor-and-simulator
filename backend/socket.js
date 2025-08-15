@@ -3,14 +3,14 @@ const http = require("http");
 const { Server } = require("socket.io");
 const axios = require("axios");
 const cors = require("cors");
-
+const allowedOrigin = process.env.CORS_ORIGIN;
 const app = express();
-app.use(cors());
+app.use(cors({ origin: allowedOrigin }));
 app.use(express.json());
 
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: "*" },
+  cors: { origin: allowedOrigin }
 });
 
 // Store active subscriptions

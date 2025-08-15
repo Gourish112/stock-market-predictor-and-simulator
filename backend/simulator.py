@@ -5,9 +5,10 @@ import datetime
 import numpy as np
 import pandas as pd
 from functools import lru_cache
-
+from dotenv import load_dotenv
+load_dotenv()
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/*": {"origins": os.getenv("FRONTEND_URL")}})
 
 # Cache stock info to reduce API calls
 @lru_cache(maxsize=100)
@@ -211,4 +212,4 @@ def market_summary():
         return jsonify({"error": f"Failed to get market summary: {str(e)}"}), 500
 
 if __name__ == "__main__":
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=True, host="0.0.0.0", port=int(os.getenv("PORT", 5000)))

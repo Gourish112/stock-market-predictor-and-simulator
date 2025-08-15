@@ -1,16 +1,18 @@
+// Rectified socket.js (combining all backend logic)
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
 const axios = require("axios");
 const cors = require("cors");
-const allowedOrigin = process.env.CORS_ORIGIN;
+const yahooFinance = require('yahoo-finance2').default; // Use a dedicated library for better data fetching
+
 const app = express();
-app.use(cors({ origin: allowedOrigin }));
+app.use(cors());
 app.use(express.json());
 
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: allowedOrigin }
+  cors: { origin: "*" },
 });
 
 // Store active subscriptions
@@ -18,8 +20,7 @@ const activeSubscriptions = new Map();
 
 // Helper to get realistic price movements
 function getRealisticPriceMovement(basePrice) {
-  // Generate random movement with slight volatility
-  const volatility = 0.002; // 0.2% volatility per update
+  const volatility = 0.002;
   const change = basePrice * volatility * (Math.random() * 2 - 1);
   return basePrice + change;
 }
@@ -27,26 +28,91 @@ function getRealisticPriceMovement(basePrice) {
 // Cache for stock data to reduce API calls
 const stockCache = new Map();
 
-// Get initial stock data and cache it
+// --- Integrated backend logic from simulator.py ---
+
+// Helper function to calculate Simple Moving Averages
+function calculateSMA(data, window) {
+  const sma = [];
+  for (let i = 0; i < data.length; i++) {
+    if (i < window - 1) {
+      sma.push(null);
+    } else {
+      const sum = data.slice(i - window + 1, i + 1).reduce((acc, val) => acc + val, 0);
+      sma.push(sum / window);
+    }
+  }
+  return sma;
+}
+
+// Fetch historical stock data and calculate technical indicators
+async function getHistoricalData(ticker, interval, exchange = "US") {
+  try {
+    const periodMap = { "1d": "1d", "5d": "5d", "1mo": "1mo", "3mo": "3mo", "6mo": "6mo", "1y": "1y", "5y": "5y" };
+    const intervalMap = { "1d": "5m", "5d": "15m", "1mo": "1h", "3mo": "1d", "6mo": "1d", "1y": "1d", "5y": "1wk" };
+
+    if (!periodMap[interval]) {
+      throw new Error("Invalid interval");
+    }
+
+    // Add .NS suffix for Indian stocks
+    const fullTicker = (exchange === "IN" && !ticker.endsWith(".NS")) ? `${ticker}.NS` : ticker;
+
+    const data = await yahooFinance.chart(fullTicker, { period1: periodMap[interval] });
+
+    if (!data.indicators || !data.indicators.quote[0] || !data.indicators.quote[0].close) {
+      throw new Error("No data available for this ticker");
+    }
+
+    const prices = data.indicators.quote[0].close;
+    const timestamps = data.timestamp.map(ts => new Date(ts * 1000).toISOString());
+    const volumes = data.indicators.quote[0].volume;
+
+    const sma20 = calculateSMA(prices, 20);
+    const sma50 = calculateSMA(prices, 50);
+
+    // Get stock info using a dedicated lookup
+    const info = await yahooFinance.quoteSummary(fullTicker, { modules: ["assetProfile", "price"] });
+    const name = info.price?.shortName || fullTicker;
+    const sector = info.assetProfile?.sector || "Unknown";
+    const meta = info.price || {};
+
+    return {
+      ticker: fullTicker,
+      prices,
+      timestamps,
+      volumes,
+      sma_20: sma20,
+      sma_50: sma50,
+      name,
+      sector,
+      exchange: meta.exchangeName || "Unknown",
+      currency: meta.currency || "USD"
+    };
+
+  } catch (error) {
+    console.error(`Error in getHistoricalData for ${ticker}:`, error.message);
+    throw new Error(`Failed to fetch data: ${error.message}`);
+  }
+}
+
+// --- End of integrated backend logic ---
+
+// Get initial stock data for real-time and cache it
 async function fetchAndCacheStockData(ticker) {
   if (stockCache.has(ticker) && Date.now() - stockCache.get(ticker).timestamp < 60000) {
     return stockCache.get(ticker).data;
   }
   
   try {
-    const response = await axios.get(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1m&range=1d`
-    );
+    const result = await yahooFinance.chart(ticker, { interval: '1m', range: '1d' });
     
-    if (!response.data?.chart?.result?.[0]) {
+    if (!result.indicators?.quote?.[0]) {
       throw new Error("Invalid data format");
     }
     
-    const result = response.data.chart.result[0];
     const quote = result.indicators.quote[0];
     const timestamps = result.timestamp || [];
     const prices = quote.close || [];
-    const volumes = quote.volume || [];
     
     const currentPrice = result.meta.regularMarketPrice || prices[prices.length - 1] || 100;
     
@@ -55,7 +121,6 @@ async function fetchAndCacheStockData(ticker) {
       latestPrice: currentPrice,
       timestamps,
       prices,
-      volumes,
       meta: result.meta
     };
     
@@ -67,52 +132,14 @@ async function fetchAndCacheStockData(ticker) {
     return data;
   } catch (error) {
     console.error(`Error fetching data for ${ticker}:`, error.message);
-    // Return fallback data
     return {
       basePrice: 100,
       latestPrice: 100,
       timestamps: [Math.floor(Date.now() / 1000)],
       prices: [100],
-      volumes: [1000],
       meta: { currency: "USD", exchangeName: "Unknown" }
     };
   }
-}
-
-// Helper to generate news items
-function generateMarketNews(ticker) {
-  const companies = {
-    AAPL: "Apple",
-    MSFT: "Microsoft",
-    GOOGL: "Google",
-    AMZN: "Amazon",
-    META: "Meta",
-    TSLA: "Tesla",
-    NFLX: "Netflix"
-  };
-  
-  const events = [
-    "announced new product line",
-    "reported quarterly earnings",
-    "CEO made a statement about future plans",
-    "unveiled strategic partnership",
-    "faces regulatory challenges",
-    "stock upgraded by analysts",
-    "stock downgraded by analysts",
-    "plans expansion into new markets",
-    "reported higher than expected revenue",
-    "announced cost-cutting measures"
-  ];
-  
-  const companyName = companies[ticker] || ticker;
-  const event = events[Math.floor(Math.random() * events.length)];
-  
-  return {
-    headline: `${companyName} ${event}`,
-    source: ["Bloomberg", "CNBC", "Reuters", "Financial Times"][Math.floor(Math.random() * 4)],
-    timestamp: new Date().toISOString(),
-    sentiment: ["positive", "neutral", "negative"][Math.floor(Math.random() * 3)]
-  };
 }
 
 io.on("connection", (socket) => {
@@ -128,42 +155,33 @@ io.on("connection", (socket) => {
     
     console.log(`Client ${socket.id} subscribed to ${ticker}`);
     
-    // Add to client's subscriptions
     subscriptions.add(ticker);
     
-    // Initialize or update global subscription counter
     if (!activeSubscriptions.has(ticker)) {
       activeSubscriptions.set(ticker, new Set());
     }
     activeSubscriptions.get(ticker).add(socket.id);
     
-    // Get initial data
     const stockData = await fetchAndCacheStockData(ticker);
     let currentPrice = stockData.latestPrice;
     
-    // Send initial data
     socket.emit("stockData", {
       ticker,
       price: currentPrice,
       currency: stockData.meta.currency || "USD",
       exchange: stockData.meta.exchangeName || "Unknown",
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      name: stockData.meta.shortName || ticker,
+      prices: stockData.prices,
+      timestamps: stockData.timestamps,
     });
     
-    // Only start interval if this is the first subscription for this ticker
     if (activeSubscriptions.get(ticker).size === 1) {
       console.log(`Starting interval for ${ticker}`);
       
-      // Store interval reference for cleanup
-      const intervalId = setInterval(async () => {
-        // Generate a realistic price movement
+      const intervalId = setInterval(() => {
         currentPrice = getRealisticPriceMovement(currentPrice);
         
-        // Occasionally generate market news (5% chance per update)
-        const includeNews = Math.random() < 0.05;
-        const newsItem = includeNews ? generateMarketNews(ticker) : null;
-        
-        // Send to all subscribed clients
         for (const clientId of activeSubscriptions.get(ticker)) {
           const clientSocket = io.sockets.sockets.get(clientId);
           if (clientSocket) {
@@ -172,29 +190,23 @@ io.on("connection", (socket) => {
               price: currentPrice,
               timestamp: new Date().toISOString(),
               volume: Math.floor(Math.random() * 10000),
-              news: newsItem
             });
           }
         }
       }, 1000);
       
-      // Store the interval ID with the ticker
       activeSubscriptions.get(ticker).intervalId = intervalId;
     }
   });
   
-  // Handle unsubscription
   socket.on("unsubscribeStock", (ticker) => {
     console.log(`Client ${socket.id} unsubscribed from ${ticker}`);
     
-    // Remove from client's subscriptions
     subscriptions.delete(ticker);
     
-    // Update global subscription counter
     if (activeSubscriptions.has(ticker)) {
       activeSubscriptions.get(ticker).delete(socket.id);
       
-      // If no more subscribers, clear the interval
       if (activeSubscriptions.get(ticker).size === 0) {
         console.log(`Stopping interval for ${ticker}`);
         clearInterval(activeSubscriptions.get(ticker).intervalId);
@@ -203,33 +215,13 @@ io.on("connection", (socket) => {
     }
   });
   
-  // Handle market news subscription
-  socket.on("subscribeMarketNews", () => {
-    console.log(`Client ${socket.id} subscribed to market news`);
-    
-    // Send random news every 10 seconds
-    const newsIntervalId = setInterval(() => {
-      // Generate a random market news
-      const tickers = ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA"];
-      const randomTicker = tickers[Math.floor(Math.random() * tickers.length)];
-      
-      socket.emit("marketNews", generateMarketNews(randomTicker));
-    }, 10000);
-    
-    // Store interval ID for cleanup
-    socket.newsIntervalId = newsIntervalId;
-  });
-  
-  // Handle disconnect to clean up all resources
   socket.on("disconnect", () => {
     console.log(`Client ${socket.id} disconnected`);
     
-    // Clean up all subscriptions for this client
     for (const ticker of subscriptions) {
       if (activeSubscriptions.has(ticker)) {
         activeSubscriptions.get(ticker).delete(socket.id);
         
-        // If no more subscribers, clear the interval
         if (activeSubscriptions.get(ticker).size === 0) {
           console.log(`Stopping interval for ${ticker}`);
           clearInterval(activeSubscriptions.get(ticker).intervalId);
@@ -237,18 +229,28 @@ io.on("connection", (socket) => {
         }
       }
     }
-    
-    // Clear news interval if exists
-    if (socket.newsIntervalId) {
-      clearInterval(socket.newsIntervalId);
-    }
   });
+});
+
+// REST API for historical data simulation
+app.post('/simulate', async (req, res) => {
+  try {
+    const data = req.body;
+    const { ticker, interval, exchange } = data;
+    
+    const result = await getHistoricalData(ticker, interval, exchange);
+    
+    return res.json(result);
+  } catch (error) {
+    console.error("Simulation Error:", error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // REST API for static data
 app.get('/api/market-overview', async (req, res) => {
   try {
-    const indices = ["^GSPC", "^DJI", "^IXIC"]; // S&P 500, Dow Jones, NASDAQ
+    const indices = ["^GSPC", "^DJI", "^IXIC"];
     const results = {};
     
     for (const idx of indices) {
@@ -261,8 +263,8 @@ app.get('/api/market-overview', async (req, res) => {
             "^IXIC": "NASDAQ"
           }[idx] || idx,
           price: data.latestPrice,
-          change: (Math.random() * 2 - 1) * (data.latestPrice * 0.01), // Random change for demo
-          percentChange: (Math.random() * 2 - 1) * 1.5 // Random % change
+          change: (Math.random() * 2 - 1) * (data.latestPrice * 0.01),
+          percentChange: (Math.random() * 2 - 1) * 1.5
         };
       } catch (error) {
         console.error(`Error with index ${idx}:`, error);

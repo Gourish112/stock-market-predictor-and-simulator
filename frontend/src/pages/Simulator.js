@@ -1,9 +1,11 @@
+// Simulator.js (Rectified)
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import axios from "axios";
 import { Line } from "react-chartjs-2";
 import io from "socket.io-client";
 
 // Constants
+// Use the URL of your deployed Render backend
 const API_URL = "https://stock-market-predictor-and-simulator-82yh.onrender.com";
 const DEFAULT_TICKER = "AAPL";
 const DEFAULT_INTERVAL = "real-time";
@@ -36,7 +38,7 @@ const Simulator = () => {
   const [holdings, setHoldings] = useState({});
   const [transactions, setTransactions] = useState([]);
 
-  // Socket connection
+  // Socket connection with the correct URL
   const socket = useMemo(() => io(API_URL), []);
 
   // Update balance when exchange changes
@@ -113,6 +115,8 @@ const Simulator = () => {
             ...prevData,
             name: data.name || ticker,
             exchange: data.exchange || "Unknown",
+            prices: data.prices, // Use initial data
+            timestamps: data.timestamps
           }));
         }
       });
@@ -164,7 +168,6 @@ const Simulator = () => {
         }
       ]);
     } else if (type === "sell" && holdings[ticker] > 0) {
-      // Find purchase price for profit calculation
       const buyTransactions = transactions.filter(tx => 
         tx.ticker === ticker && tx.type === "Buy"
       );

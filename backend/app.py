@@ -4,9 +4,14 @@ import numpy as np
 import yfinance as yf
 import tensorflow as tf
 from sklearn.preprocessing import MinMaxScaler
+from dotenv import load_dotenv
+load_dotenv()
 
 app = Flask(__name__)
-CORS(app)  # Allow all origins for CORS
+FRONTEND_URL = os.getenv("CORS_ORIGIN")
+
+# Configure CORS with frontend URL
+CORS(app, origins=[FRONTEND_URL])
 
 # Load the trained model
 model_path = "stock_model_multihorizon_keras.keras"
@@ -89,4 +94,4 @@ def simulate():
         print("Simulation Error:", str(e))
         return jsonify({"error": "Simulation failed due to internal server error"}), 500
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))

@@ -6,7 +6,7 @@ import io from "socket.io-client";
 
 // Constants
 // Use the URL of your deployed Render backend
-const API_URL = "https://stock-market-predictor-and-simulator-82yh.onrender.com";
+const API_URL = process.env.REACT_APP_API_URL;
 const DEFAULT_TICKER = "AAPL";
 const DEFAULT_INTERVAL = "1mo";
 const DEFAULT_EXCHANGE = "US";

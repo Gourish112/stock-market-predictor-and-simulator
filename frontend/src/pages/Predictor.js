@@ -25,7 +25,8 @@ const Predictor = () => {
 
         try {
             const formattedTicker = formatTicker(ticker);
-            const response = await fetch("https://stock-market-predictor-and-simulator-82yh.onrender.com/api/predict", {
+            const API_URL = process.env.REACT_APP_API_URL;
+            const response = await fetch(`${API_URL}/api/predict`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ ticker: formattedTicker }),

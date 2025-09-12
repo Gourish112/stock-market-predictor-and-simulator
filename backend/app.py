@@ -5,41 +5,37 @@ import yfinance as yf
 import tensorflow as tf
 from sklearn.preprocessing import MinMaxScaler
 from dotenv import load_dotenv
-import os, time, json
-import redis
+import os, time
 
 load_dotenv()
 
 app = Flask(__name__)
 FRONTEND_URL = os.getenv("CORS_ORIGIN")
 
-# Configure CORS
+# Configure CORS with frontend URL
 CORS(app, origins=[FRONTEND_URL])
 
-# Load model
+# Load the trained model once
 model_path = "stock_model_multihorizon_keras.keras"
 model = tf.keras.models.load_model(model_path)
 
-# Redis connection
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-redis_client = redis.StrictRedis.from_url(REDIS_URL, decode_responses=True)
+# Portfolio Simulation Variables
+portfolio = {}
+balance = 10000  # Starting balance
+transaction_history = []
 
-CACHE_TTL = 60  # 60s cache
+# --- Caching Layer ---
+CACHE = {}
+CACHE_TTL = 60  # seconds
 
-
-# --- Redis Cached Fetch ---
 def cached_fetch(ticker, period="200d", interval="1d"):
-    """Fetch stock data with Redis caching and retry logic"""
+    """Fetch stock data with caching and retry logic"""
     key = f"{ticker}_{period}_{interval}"
+    now = time.time()
 
-    # ✅ return from cache if present
-    cached_data = redis_client.get(key)
-    if cached_data:
-        try:
-            df = yf.download(tickers=ticker, period=period, interval=interval, progress=False)
-            return df  # still need DataFrame structure
-        except Exception:
-            pass
+    # ✅ return from cache if fresh
+    if key in CACHE and now - CACHE[key]["time"] < CACHE_TTL:
+        return CACHE[key]["data"]
 
     # Retry wrapper for yfinance
     retries, delay = 3, 2
@@ -50,12 +46,7 @@ def cached_fetch(ticker, period="200d", interval="1d"):
             if df.empty:
                 raise ValueError("No data received")
 
-            # Save to Redis (as JSON of Close prices and index)
-            payload = {
-                "timestamps": df.index.strftime('%Y-%m-%d %H:%M:%S').tolist(),
-                "prices": df["Close"].tolist()
-            }
-            redis_client.setex(key, CACHE_TTL, json.dumps(payload))
+            CACHE[key] = {"data": df, "time": now}
             return df
         except Exception as e:
             print(f"⚠️ Error fetching {ticker}: {e}, retry {i+1}/{retries}")
@@ -113,26 +104,12 @@ def simulate():
         ticker = data.get("ticker", "AAPL")
         interval = data.get("interval", "1d")
 
-        key = f"{ticker}_{interval}_1h"
-        cached_data = redis_client.get(key)
-
-        if cached_data:
-            payload = json.loads(cached_data)
-            return jsonify({
-                "ticker": ticker,
-                "timestamps": payload["timestamps"],
-                "prices": payload["prices"]
-            })
-
         df = cached_fetch(ticker, period=interval, interval="1h")
         if df is None or "Close" not in df.columns:
             return jsonify({"error": "Invalid stock ticker or no data available"}), 400
 
         timestamps = df.index.strftime('%Y-%m-%d %H:%M:%S').tolist()
         prices = df["Close"].tolist()
-
-        payload = {"timestamps": timestamps, "prices": prices}
-        redis_client.setex(key, CACHE_TTL, json.dumps(payload))
 
         return jsonify({
             "ticker": ticker,
@@ -147,4 +124,5 @@ def simulate():
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
+
 

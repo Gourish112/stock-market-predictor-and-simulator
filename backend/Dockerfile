@@ -27,5 +27,6 @@ COPY stock_model_multihorizon_keras.keras stock_model_multihorizon_keras.keras
 EXPOSE 5000
 
 # Start the Flask app using gunicorn (recommended for production)
-CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:5000", "--timeout", "120"]
+CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:5000", "--workers", "1", "--timeout", "120"]
+
 

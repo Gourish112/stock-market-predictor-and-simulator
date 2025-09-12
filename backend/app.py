@@ -5,55 +5,90 @@ import yfinance as yf
 import tensorflow as tf
 from sklearn.preprocessing import MinMaxScaler
 from dotenv import load_dotenv
-import os
+import os, time, json
+import redis
+
 load_dotenv()
 
 app = Flask(__name__)
 FRONTEND_URL = os.getenv("CORS_ORIGIN")
 
-# Configure CORS with frontend URL
+# Configure CORS
 CORS(app, origins=[FRONTEND_URL])
 
-# Load the trained model
+# Load model
 model_path = "stock_model_multihorizon_keras.keras"
 model = tf.keras.models.load_model(model_path)
 
-# Portfolio Simulation Variables
-portfolio = {}
-balance = 10000  # Starting balance
-transaction_history = []
+# Redis connection
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+redis_client = redis.StrictRedis.from_url(REDIS_URL, decode_responses=True)
 
-# Function to fetch stock data and prepare input
+CACHE_TTL = 60  # 60s cache
+
+
+# --- Redis Cached Fetch ---
+def cached_fetch(ticker, period="200d", interval="1d"):
+    """Fetch stock data with Redis caching and retry logic"""
+    key = f"{ticker}_{period}_{interval}"
+
+    # ✅ return from cache if present
+    cached_data = redis_client.get(key)
+    if cached_data:
+        try:
+            df = yf.download(tickers=ticker, period=period, interval=interval, progress=False)
+            return df  # still need DataFrame structure
+        except Exception:
+            pass
+
+    # Retry wrapper for yfinance
+    retries, delay = 3, 2
+    for i in range(retries):
+        try:
+            stock = yf.Ticker(ticker)
+            df = stock.history(period=period, interval=interval)
+            if df.empty:
+                raise ValueError("No data received")
+
+            # Save to Redis (as JSON of Close prices and index)
+            payload = {
+                "timestamps": df.index.strftime('%Y-%m-%d %H:%M:%S').tolist(),
+                "prices": df["Close"].tolist()
+            }
+            redis_client.setex(key, CACHE_TTL, json.dumps(payload))
+            return df
+        except Exception as e:
+            print(f"⚠️ Error fetching {ticker}: {e}, retry {i+1}/{retries}")
+            time.sleep(delay)
+            delay *= 2
+
+    return None
+
+
+# --- Helper to prepare stock input for model ---
 def get_stock_input(ticker, period="200d", interval="1d"):
-    try:
-        stock = yf.Ticker(ticker)
-        df = stock.history(period=period, interval=interval)
-
-
-        if df.empty or len(df) < 100:
-            return None, None  # Ensure enough data is available
-
-        data = df["Close"].values[-100:].reshape(-1, 1)  # Last 100 days
-        scaler = MinMaxScaler(feature_range=(0, 1))
-        data_scaled = scaler.fit_transform(data)
-
-        return np.array([data_scaled]), scaler  # Reshape for LSTM
-
-    except Exception as e:
-        print(f"Error fetching stock data for {ticker}: {e}")
+    df = cached_fetch(ticker, period, interval)
+    if df is None or len(df) < 100:
         return None, None
 
+    data = df["Close"].values[-100:].reshape(-1, 1)
+    scaler = MinMaxScaler(feature_range=(0, 1))
+    data_scaled = scaler.fit_transform(data)
+
+    return np.array([data_scaled]), scaler
+
+
+# --- Prediction Route ---
 @app.route('/api/predict', methods=['POST'])
 def predict():
     try:
         data = request.json
-        ticker = data.get("ticker", "^GSPC")  
+        ticker = data.get("ticker", "^GSPC")
 
         X_input, scaler = get_stock_input(ticker)
         if X_input is None or scaler is None:
             return jsonify({"error": f"Invalid ticker '{ticker}' or insufficient data"}), 400
 
-        # ✅ Predict for all timeframes using the same model
         y_pred = model.predict(X_input)
         predictions = {
             "1_day": round(float(scaler.inverse_transform(y_pred)[0][0]), 2),
@@ -69,21 +104,35 @@ def predict():
         print("❌ Prediction Error:", str(e))
         return jsonify({"error": "Prediction failed due to internal server error"}), 500
 
+
+# --- Simulation Route ---
 @app.route('/simulate', methods=['POST'])
 def simulate():
     try:
         data = request.json
         ticker = data.get("ticker", "AAPL")
-        interval = data.get("interval", "1d")  # Default interval
+        interval = data.get("interval", "1d")
 
-        stock = yf.Ticker(ticker)
-        df = stock.history(period=interval, interval="1h")
+        key = f"{ticker}_{interval}_1h"
+        cached_data = redis_client.get(key)
 
-        if df.empty or "Close" not in df.columns:
+        if cached_data:
+            payload = json.loads(cached_data)
+            return jsonify({
+                "ticker": ticker,
+                "timestamps": payload["timestamps"],
+                "prices": payload["prices"]
+            })
+
+        df = cached_fetch(ticker, period=interval, interval="1h")
+        if df is None or "Close" not in df.columns:
             return jsonify({"error": "Invalid stock ticker or no data available"}), 400
 
         timestamps = df.index.strftime('%Y-%m-%d %H:%M:%S').tolist()
         prices = df["Close"].tolist()
+
+        payload = {"timestamps": timestamps, "prices": prices}
+        redis_client.setex(key, CACHE_TTL, json.dumps(payload))
 
         return jsonify({
             "ticker": ticker,
@@ -92,7 +141,10 @@ def simulate():
         })
 
     except Exception as e:
-        print("Simulation Error:", str(e))
+        print("❌ Simulation Error:", str(e))
         return jsonify({"error": "Simulation failed due to internal server error"}), 500
+
+
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
+

@@ -15,14 +15,16 @@ RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
+# Create a non-root user for security
+RUN adduser --disabled-password --gecos '' myuser
+USER myuser
+
 # Copy and install Python dependencies
-COPY requirements.txt . 
+COPY requirements.txt .
 
-# Make sure pip is updated
+# Make sure pip is updated and install requirements, including gunicorn
 RUN pip install --upgrade pip
-
-# Install requirements + redis client
-RUN pip install -r requirements.txt && pip install redis
+RUN pip install -r requirements.txt gunicorn redis
 
 # Copy your backend code into the container
 COPY . .
@@ -30,10 +32,10 @@ COPY . .
 # Copy your ML model explicitly (if required)
 COPY stock_model_multihorizon_keras.keras stock_model_multihorizon_keras.keras
 
-# Expose the port (Flask uses 5000 by default)
+# Expose the port
 EXPOSE 5000
 
 # Start the Flask app using gunicorn (recommended for production)
-CMD ["python", "app.py"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app"]
 
 

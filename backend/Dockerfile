@@ -5,7 +5,7 @@ FROM python:3.10-slim
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Set working directory inside the container
+# Set working directory
 WORKDIR /app
 
 # Install OS dependencies
@@ -15,27 +15,28 @@ RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-# Create a non-root user for security
+# Copy dependency list
+COPY requirements.txt .
+
+# Upgrade pip and install dependencies
+RUN pip install --upgrade pip
+RUN pip install -r requirements.txt && pip install gunicorn eventlet==0.33.3 redis
+
+# Copy project files
+COPY . .
+
+# Copy ML model explicitly (if needed)
+COPY stock_model_multihorizon_keras.keras stock_model_multihorizon_keras.keras
+
+# Expose Flask/Gunicorn port
+EXPOSE 5000
+
+# Drop to non-root user for security (AFTER installing deps)
 RUN adduser --disabled-password --gecos '' myuser
 USER myuser
 
-# Copy and install Python dependencies
-COPY requirements.txt .
-
-# Make sure pip is updated and install requirements, including gunicorn
-RUN pip install --upgrade pip
-RUN pip install -r requirements.txt gunicorn redis
-
-# Copy your backend code into the container
-COPY . .
-
-# Copy your ML model explicitly (if required)
-COPY stock_model_multihorizon_keras.keras stock_model_multihorizon_keras.keras
-
-# Expose the port
-EXPOSE 5000
-
-# Start the Flask app using gunicorn (recommended for production)
+# Start app with gunicorn + eventlet
 CMD ["gunicorn", "--worker-class", "eventlet", "-w", "1", "-b", "0.0.0.0:5000", "app:app"]
+
 
 

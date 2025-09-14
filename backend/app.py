@@ -8,6 +8,7 @@ import redis
 from flask import Flask, jsonify, request
 from flask_socketio import SocketIO, emit
 from tensorflow.keras.models import load_model
+from flask_cors import CORS
 
 # -----------------------
 # Flask + SocketIO setup

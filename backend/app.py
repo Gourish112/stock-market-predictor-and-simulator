@@ -5,7 +5,7 @@ import yfinance as yf
 import tensorflow as tf
 from sklearn.preprocessing import MinMaxScaler
 from dotenv import load_dotenv
-import os, time
+import os, time, redis, pickle
 
 load_dotenv()
 
@@ -19,25 +19,25 @@ CORS(app, origins=[FRONTEND_URL])
 model_path = "stock_model_multihorizon_keras.keras"
 model = tf.keras.models.load_model(model_path)
 
+# --- Redis Cache ---
+REDIS_URL = os.getenv("REDIS_URL")
+redis_client = redis.from_url(REDIS_URL)
+CACHE_TTL = 60  # seconds
+
 # Portfolio Simulation Variables
 portfolio = {}
 balance = 10000  # Starting balance
 transaction_history = []
 
-# --- Caching Layer ---
-CACHE = {}
-CACHE_TTL = 60  # seconds
 
 def cached_fetch(ticker, period="200d", interval="1d"):
-    """Fetch stock data with caching and retry logic"""
+    """Fetch stock data with Redis caching and retry logic"""
     key = f"{ticker}_{period}_{interval}"
-    now = time.time()
+    cached_data = redis_client.get(key)
 
-    # ✅ return from cache if fresh
-    if key in CACHE and now - CACHE[key]["time"] < CACHE_TTL:
-        return CACHE[key]["data"]
+    if cached_data:  # ✅ Return cached if available
+        return pickle.loads(cached_data)
 
-    # Retry wrapper for yfinance
     retries, delay = 3, 2
     for i in range(retries):
         try:
@@ -46,7 +46,8 @@ def cached_fetch(ticker, period="200d", interval="1d"):
             if df.empty:
                 raise ValueError("No data received")
 
-            CACHE[key] = {"data": df, "time": now}
+            # Store in Redis (serialize with pickle)
+            redis_client.setex(key, CACHE_TTL, pickle.dumps(df))
             return df
         except Exception as e:
             print(f"⚠️ Error fetching {ticker}: {e}, retry {i+1}/{retries}")
@@ -124,5 +125,6 @@ def simulate():
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
+
 
 

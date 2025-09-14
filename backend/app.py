@@ -14,6 +14,7 @@ from tensorflow.keras.models import load_model
 # -----------------------
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "your_secret"
+CORS(app, origins=["https://stock-market-predictor-and-simulato.vercel.app"])
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 # -----------------------

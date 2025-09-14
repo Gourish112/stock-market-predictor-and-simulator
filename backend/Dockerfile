@@ -16,17 +16,25 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy and install Python dependencies
-COPY requirements.txt .
+COPY requirements.txt . 
+
+# Make sure pip is updated
 RUN pip install --upgrade pip
-RUN pip install -r requirements.txt
+
+# Install requirements + redis client
+RUN pip install -r requirements.txt && pip install redis
 
 # Copy your backend code into the container
 COPY . .
+
+# Copy your ML model explicitly (if required)
 COPY stock_model_multihorizon_keras.keras stock_model_multihorizon_keras.keras
+
 # Expose the port (Flask uses 5000 by default)
 EXPOSE 5000
 
 # Start the Flask app using gunicorn (recommended for production)
 CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:5000", "--workers", "1", "--timeout", "120"]
+
 
 

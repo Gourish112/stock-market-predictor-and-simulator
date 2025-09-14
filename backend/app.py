@@ -7,10 +7,10 @@ import tensorflow as tf
 from sklearn.preprocessing import MinMaxScaler
 from dotenv import load_dotenv
 import os, time
+import yfinance as yf
 from functools import lru_cache
 import threading
 import pandas as pd
-import datetime
 
 load_dotenv()
 
@@ -22,7 +22,7 @@ API_KEY = os.getenv("TWELVE_DATA_KEY")
 CORS(app, origins=FRONTEND_URL)
 socketio = SocketIO(app, cors_allowed_origins=FRONTEND_URL)
 
-# --- Real-Time Stock Data ---
+# --- Real-Time Stock Data (from socket.js) ---
 active_subscriptions = {}
 stock_cache = {}
 lock = threading.Lock()
@@ -33,36 +33,44 @@ def get_realistic_price_movement(base_price):
     change = base_price * volatility * (np.random.rand() * 2 - 1)
     return base_price + change
 
-@lru_cache(maxsize=100)
 def fetch_and_cache_stock_data(ticker):
-    """Fetch initial stock data from Twelve Data and cache it."""
-    try:
-        url = f"https://api.twelvedata.com/quote?symbol={ticker}&apikey={API_KEY}"
-        response = requests.get(url, timeout=10)
-        data = response.json()
+    """Fetch initial stock data from Yahoo Finance and cache it."""
+    with lock:
+        if ticker in stock_cache and time.time() - stock_cache[ticker]["timestamp"] < 60:
+            return stock_cache[ticker]["data"]
         
-        if not data or "status" not in data or data["status"] != "ok":
-            print(f"Error fetching data for {ticker}: {data.get('message', 'Unknown error')}")
-            return None
-
-        stock_data = {
-            "basePrice": float(data.get("close", 100)),
-            "latestPrice": float(data.get("close", 100)),
-            "meta": {
-                "currency": data.get("currency", "USD"),
-                "exchangeName": data.get("exchange", "Unknown"),
-                "name": data.get("name", ticker)
+        try:
+            url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1m&range=1d"
+            response = requests.get(url, timeout=10)
+            data = response.json()
+            
+            if not data.get("chart") or not data["chart"].get("result") or not data["chart"]["result"][0]:
+                raise ValueError("Invalid data format")
+                
+            result = data["chart"]["result"][0]
+            current_price = result["meta"].get("regularMarketPrice", result["indicators"]["quote"][0]["close"][-1] if result["indicators"]["quote"][0]["close"] else 100)
+            
+            stock_data = {
+                "basePrice": current_price,
+                "latestPrice": current_price,
+                "meta": result["meta"]
             }
-        }
-        return stock_data
-    except Exception as e:
-        print(f"Error fetching data for {ticker}: {e}")
-        return None
+            
+            stock_cache[ticker] = {"data": stock_data, "timestamp": time.time()}
+            return stock_data
+            
+        except Exception as e:
+            print(f"Error fetching data for {ticker}: {e}")
+            return {
+                "basePrice": 100,
+                "latestPrice": 100,
+                "meta": {"currency": "USD", "exchangeName": "Unknown"}
+            }
 
 def generate_market_news(ticker=None):
     """Generate a random news item."""
-    companies = {"AAPL": "Apple", "MSFT": "Microsoft", "GOOGL": "Google", "AMZN": "Amazon"}
-    events = ["announced new product line", "reported quarterly earnings", "CEO made a statement about future plans"]
+    companies = {"AAPL": "Apple", "MSFT": "Microsoft", "GOOGL": "Google", "AMZN": "Amazon", "META": "Meta", "TSLA": "Tesla", "NFLX": "Netflix"}
+    events = ["announced new product line", "reported quarterly earnings", "CEO made a statement about future plans", "unveiled strategic partnership", "faces regulatory challenges", "stock upgraded by analysts", "stock downgraded by analysts", "plans expansion into new markets", "reported higher than expected revenue", "announced cost-cutting measures"]
     
     if ticker is None:
         ticker = np.random.choice(list(companies.keys()))
@@ -72,7 +80,7 @@ def generate_market_news(ticker=None):
     
     return {
         "headline": f"{company_name} {event}",
-        "source": np.random.choice(["Bloomberg", "CNBC"]),
+        "source": np.random.choice(["Bloomberg", "CNBC", "Reuters", "Financial Times"]),
         "timestamp": datetime.datetime.now().isoformat(),
         "sentiment": np.random.choice(["positive", "neutral", "negative"])
     }
@@ -83,12 +91,8 @@ def start_stock_interval(ticker):
         if ticker not in active_subscriptions or "thread" in active_subscriptions[ticker]:
             return
         
-        stock_data = fetch_and_cache_stock_data(ticker)
-        if not stock_data:
-            return
-
         def update_prices():
-            current_price = stock_data["latestPrice"]
+            current_price = fetch_and_cache_stock_data(ticker)["latestPrice"]
             while True:
                 with lock:
                     if ticker not in active_subscriptions or not active_subscriptions[ticker]["subscribers"]:
@@ -127,6 +131,9 @@ def on_disconnect():
         for ticker in list(active_subscriptions.keys()):
             if request.sid in active_subscriptions[ticker]["subscribers"]:
                 active_subscriptions[ticker]["subscribers"].remove(request.sid)
+                if not active_subscriptions[ticker]["subscribers"]:
+                    # The thread will clean itself up
+                    pass
 
 @socketio.on("subscribeStock")
 def on_subscribe_stock(ticker):
@@ -141,16 +148,13 @@ def on_subscribe_stock(ticker):
         active_subscriptions[ticker]["subscribers"].add(request.sid)
 
     stock_data = fetch_and_cache_stock_data(ticker)
-    if stock_data:
-        emit("stockData", {
-            "ticker": ticker,
-            "price": round(stock_data["latestPrice"], 2),
-            "currency": stock_data["meta"].get("currency", "USD"),
-            "exchange": stock_data["meta"].get("exchangeName", "Unknown"),
-            "timestamp": datetime.datetime.now().isoformat()
-        })
-    else:
-        emit("error", {"message": f"Failed to fetch initial data for {ticker}"})
+    emit("stockData", {
+        "ticker": ticker,
+        "price": round(stock_data["latestPrice"], 2),
+        "currency": stock_data["meta"].get("currency", "USD"),
+        "exchange": stock_data["meta"].get("exchangeName", "Unknown"),
+        "timestamp": datetime.datetime.now().isoformat()
+    })
     
     start_stock_interval(ticker)
 
@@ -174,7 +178,7 @@ def on_subscribe_market_news():
     thread.daemon = True
     thread.start()
 
-# --- Stock Prediction & Historical Data ---
+# --- Stock Prediction (from app.py) ---
 try:
     model_path = "stock_model_multihorizon_keras.keras"
     model = tf.keras.models.load_model(model_path)
@@ -182,22 +186,31 @@ except Exception as e:
     print(f"Failed to load the model: {e}")
     model = None
 
-@lru_cache(maxsize=100)
-def cached_fetch_twelve_data(symbol, interval="1day", outputsize=100):
+CACHE = {}
+CACHE_TTL = 60
+
+def cached_fetch(symbol, interval="1day", outputsize=100):
     """Fetch stock data from Twelve Data with caching."""
+    key = f"{symbol}_{interval}_{outputsize}"
+    now = time.time()
+    if key in CACHE and now - CACHE[key]["time"] < CACHE_TTL:
+        return CACHE[key]["data"]
+
     url = f"https://api.twelvedata.com/time_series?symbol={symbol}&interval={interval}&outputsize={outputsize}&apikey={API_KEY}"
     try:
         resp = requests.get(url, timeout=10)
         data = resp.json()
-        if "values" not in data or data["status"] != "ok":
+        if "values" not in data:
             return None
-        return data["values"][::-1] # Reverse the data to be chronological
+        df = data["values"][::-1]
+        CACHE[key] = {"data": df, "time": now}
+        return df
     except Exception as e:
         print(f"⚠️ Twelve Data Fetch error: {e}")
         return None
 
 def get_stock_input(symbol):
-    df = cached_fetch_twelve_data(symbol)
+    df = cached_fetch(symbol)
     if not df or len(df) < 100:
         return None, None
     closes = [float(item["close"]) for item in df[-100:]]
@@ -229,79 +242,61 @@ def predict():
         print(f"❌ Prediction Error: {str(e)}")
         return jsonify({"error": "Prediction failed"}), 500
 
-def get_historical_data_twelve(ticker, interval, exchange="US"):
-    """Fetch historical data with indicators from Twelve Data."""
+# --- Historical and Search Functionality (from simulator.py) ---
+@lru_cache(maxsize=100)
+def get_stock_info(ticker):
+    """Fetch basic stock info with caching."""
     try:
-        interval_map = {"1d": "1min", "5d": "5min", "1mo": "1h", "3mo": "1h", "6mo": "1day", "1y": "1day", "5y": "1week"}
-        output_map = {"1d": 390, "5d": 390, "1mo": 420, "3mo": 180, "6mo": 180, "1y": 252, "5y": 260}
-        
-        if interval not in interval_map:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        return {
+            "name": info.get("shortName", ticker),
+            "sector": info.get("sector", "Unknown"),
+            "marketCap": info.get("marketCap", 0),
+            "currency": info.get("currency", "USD"),
+            "exchange": info.get("exchange", "Unknown")
+        }
+    except Exception as e:
+        print(f"Error fetching stock info for {ticker}: {str(e)}")
+        return {"name": ticker, "sector": "Unknown", "marketCap": 0, "currency": "USD", "exchange": "Unknown"}
+
+def get_historical_data(ticker, interval, exchange="US"):
+    """Fetch historical data with technical indicators."""
+    try:
+        period_map = {"1d": "1d", "5d": "5d", "1mo": "1mo", "3mo": "3mo", "6mo": "6mo", "1y": "1y", "5y": "5y"}
+        interval_map = {"1d": "5m", "5d": "15m", "1mo": "1h", "3mo": "1d", "6mo": "1d", "1y": "1d", "5y": "1wk"}
+        if interval not in period_map:
             return {"error": "Invalid interval"}
-
-        # Combine requests for OHLCV and indicators
-        url_base = f"https://api.twelvedata.com/time_series?symbol={ticker}&interval={interval_map[interval]}&outputsize={output_map[interval]}&apikey={API_KEY}"
-        
-        # Twelve Data requires separate calls for indicators on the free tier
-        url_sma20 = f"{url_base}&indicator=SMA&time_period=20"
-        url_sma50 = f"{url_base}&indicator=SMA&time_period=50"
-        url_rsi = f"{url_base}&indicator=RSI"
-        
-        # Make requests
-        resp_base = requests.get(url_base, timeout=10).json()
-        resp_sma20 = requests.get(url_sma20, timeout=10).json()
-        resp_sma50 = requests.get(url_sma50, timeout=10).json()
-        resp_rsi = requests.get(url_rsi, timeout=10).json()
-
-        if "values" not in resp_base or resp_base["status"] != "ok":
-            return {"error": resp_base.get("message", "No data available")}
-
-        df = pd.DataFrame(resp_base["values"]).astype(float)
-        df["datetime"] = [datetime.datetime.fromtimestamp(int(t)) for t in df["datetime"]]
-        df = df.set_index("datetime")
-        
-        # Combine indicators
-        df_sma20 = pd.DataFrame(resp_sma20.get("values", []))
-        df_sma50 = pd.DataFrame(resp_sma50.get("values", []))
-        df_rsi = pd.DataFrame(resp_rsi.get("values", []))
-
-        if not df_sma20.empty:
-            df_sma20.set_index("datetime", inplace=True)
-            df_sma20.index = [datetime.datetime.fromtimestamp(int(t)) for t in df_sma20.index]
-            df["SMA_20"] = df_sma20["SMA"]
-
-        if not df_sma50.empty:
-            df_sma50.set_index("datetime", inplace=True)
-            df_sma50.index = [datetime.datetime.fromtimestamp(int(t)) for t in df_sma50.index]
-            df["SMA_50"] = df_sma50["SMA"]
-
-        if not df_rsi.empty:
-            df_rsi.set_index("datetime", inplace=True)
-            df_rsi.index = [datetime.datetime.fromtimestamp(int(t)) for t in df_rsi.index]
-            df["RSI"] = df_rsi["RSI"]
-
-        # Calculate volatility and percentage change manually
-        df["PctChange"] = df["close"].pct_change() * 100
+        if exchange == "IN" and not ticker.endswith(".NS"):
+            ticker = f"{ticker}.NS"
+        stock = yf.Ticker(ticker)
+        df = stock.history(period=period_map[interval], interval=interval_map[interval])
+        if df.empty or "Close" not in df.columns:
+            return {"error": "No data available for this ticker"}
+        df["SMA_20"] = df["Close"].rolling(window=20).mean()
+        df["SMA_50"] = df["Close"].rolling(window=50).mean()
+        delta = df["Close"].diff()
+        gain = delta.where(delta > 0, 0).rolling(window=14).mean()
+        loss = -delta.where(delta < 0, 0).rolling(window=14).mean()
+        rs = gain / loss
+        df["RSI"] = 100 - (100 / (1 + rs))
+        df["PctChange"] = df["Close"].pct_change() * 100
         df["Volatility"] = df["PctChange"].rolling(window=20).std()
-
-        # Get company info
-        info_url = f"https://api.twelvedata.com/quote?symbol={ticker}&apikey={API_KEY}"
-        info_resp = requests.get(info_url, timeout=5).json()
-        
         result = {
             "ticker": ticker,
-            "name": info_resp.get("name", ticker),
             "timestamps": df.index.strftime("%Y-%m-%d %H:%M:%S").tolist(),
-            "prices": df["close"].tolist(),
-            "volumes": df["volume"].tolist(),
-            "sma_20": df["SMA_20"].tolist() if "SMA_20" in df else [],
-            "sma_50": df["SMA_50"].tolist() if "SMA_50" in df else [],
-            "rsi": df["RSI"].tolist() if "RSI" in df else [],
+            "prices": df["Close"].tolist(),
+            "volumes": df["Volume"].tolist(),
+            "sma_20": df["SMA_20"].tolist(),
+            "sma_50": df["SMA_50"].tolist(),
+            "rsi": df["RSI"].tolist(),
             "volatility": df["Volatility"].tolist(),
             "pct_change": df["PctChange"].tolist()
         }
+        result.update(get_stock_info(ticker))
         return result
     except Exception as e:
-        print(f"Error in get_historical_data_twelve for {ticker}: {str(e)}")
+        print(f"Error in get_historical_data for {ticker}: {str(e)}")
         return {"error": f"Failed to fetch data: {str(e)}"}
 
 @app.route('/simulate', methods=['POST'])
@@ -310,8 +305,8 @@ def simulate():
         data = request.json
         ticker = data.get("ticker", "AAPL")
         interval = data.get("interval", "1d")
-        exchange = data.get("exchange", "US") # Twelve Data API handles exchange via symbol lookup
-        result = get_historical_data_twelve(ticker, interval, exchange)
+        exchange = data.get("exchange", "US")
+        result = get_historical_data(ticker, interval, exchange)
         if "error" in result:
             return jsonify(result), 400
         return jsonify(result)
@@ -323,23 +318,28 @@ def simulate():
 def search_stocks():
     try:
         query = request.args.get('query', '')
+        exchange = request.args.get('exchange', 'US')
         if not query or len(query) < 2:
             return jsonify({"results": []})
-        
-        url = f"https://api.twelvedata.com/symbol_search?symbol={query}&apikey={API_KEY}"
-        resp = requests.get(url, timeout=5).json()
-        
-        if "data" not in resp:
-            return jsonify({"results": []})
-        
         results = []
-        for item in resp["data"]:
-            results.append({
-                "symbol": item.get("symbol"),
-                "name": item.get("instrument_name", item.get("symbol")),
-                "exchange": item.get("exchange")
-            })
-        
+        if exchange == "IN":
+            tickers = yf.Tickers(f"{query}.*").tickers
+            for symbol in tickers:
+                if symbol.endswith(".NS"):
+                    try:
+                        info = tickers[symbol].info
+                        results.append({"symbol": symbol, "name": info.get("shortName", symbol), "exchange": "NSE"})
+                    except:
+                        pass
+        else:
+            tickers = yf.Tickers(f"{query}.*").tickers
+            for symbol in tickers:
+                if not symbol.endswith(".NS"):
+                    try:
+                        info = tickers[symbol].info
+                        results.append({"symbol": symbol, "name": info.get("shortName", symbol), "exchange": info.get("exchange", "Unknown")})
+                    except:
+                        pass
         return jsonify({"results": results[:10]})
     except Exception as e:
         print(f"Search Error: {str(e)}")
@@ -349,19 +349,10 @@ def search_stocks():
 def stock_info():
     try:
         ticker = request.args.get('ticker', 'AAPL')
-        url = f"https://api.twelvedata.com/quote?symbol={ticker}&apikey={API_KEY}"
-        info_resp = requests.get(url, timeout=5).json()
-        
-        if "status" not in info_resp or info_resp["status"] != "ok":
-            return jsonify({"error": "Stock not found"}), 404
-            
-        info = {
-            "name": info_resp.get("name", ticker),
-            "symbol": info_resp.get("symbol"),
-            "currency": info_resp.get("currency", "USD"),
-            "exchange": info_resp.get("exchange", "Unknown"),
-            "country": info_resp.get("country", "Unknown")
-        }
+        exchange = request.args.get('exchange', 'US')
+        if exchange == "IN" and not ticker.endswith(".NS"):
+            ticker = f"{ticker}.NS"
+        info = get_stock_info(ticker)
         return jsonify(info)
     except Exception as e:
         print(f"Info Error: {str(e)}")
@@ -372,26 +363,48 @@ def market_summary():
     try:
         indices = ["^GSPC", "^DJI", "^IXIC"]
         if request.args.get('exchange') == "IN":
-            indices = ["BSE", "NSE"] # Twelve Data uses these symbols for Indian indices
+            indices = ["^NSEI", "^BSESN"]
         results = {}
         for idx in indices:
             try:
-                url = f"https://api.twelvedata.com/quote?symbol={idx}&apikey={API_KEY}"
-                resp = requests.get(url, timeout=5).json()
-                if "status" not in resp or resp["status"] != "ok":
-                    continue
-                results[idx] = {
-                    "name": resp.get("name", idx),
-                    "price": float(resp.get("close", 0)),
-                    "change": float(resp.get("change", 0)),
-                    "percentChange": float(resp.get("percent_change", 0))
-                }
+                index_data = yf.Ticker(idx)
+                hist = index_data.history(period="1d")
+                if not hist.empty:
+                    current = hist["Close"].iloc[-1]
+                    prev_close = hist["Close"].iloc[-2] if len(hist) > 1 else current
+                    change = current - prev_close
+                    pct_change = (change / prev_close) * 100 if prev_close else 0
+                    results[idx] = {
+                        "name": index_data.info.get("shortName", idx),
+                        "price": current,
+                        "change": change,
+                        "percentChange": pct_change
+                    }
             except Exception as e:
                 print(f"Error fetching {idx}: {str(e)}")
         return jsonify(results)
     except Exception as e:
         print(f"Market Summary Error: {str(e)}")
         return jsonify({"error": "Failed to get market summary"}), 500
+
+# You can also keep the '/api/market-overview' from the Node.js file if you need it.
+@app.route('/api/market-overview', methods=['GET'])
+def market_overview():
+    try:
+        indices = ["^GSPC", "^DJI", "^IXIC"]
+        results = {}
+        for idx in indices:
+            data = fetch_and_cache_stock_data(idx)
+            results[idx] = {
+                "name": {"^GSPC": "S&P 500", "^DJI": "Dow Jones", "^IXIC": "NASDAQ"}.get(idx, idx),
+                "price": data["latestPrice"],
+                "change": (np.random.rand() * 2 - 1) * (data["latestPrice"] * 0.01),
+                "percentChange": (np.random.rand() * 2 - 1) * 1.5
+            }
+        return jsonify(results)
+    except Exception as e:
+        print(f"Market overview error: {e}")
+        return jsonify({"error": "Failed to fetch market overview"}), 500
 
 if __name__ == '__main__':
     port = int(os.getenv("PORT", 5000))

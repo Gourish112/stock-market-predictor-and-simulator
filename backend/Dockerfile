@@ -35,6 +35,3 @@ EXPOSE 5000
 
 # Start the Flask app using gunicorn (recommended for production)
 CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:5000", "--workers", "1", "--timeout", "120"]
-
-
-

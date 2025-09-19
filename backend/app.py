@@ -1,11 +1,11 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from flask_socketio import SocketIO, emit, join_room, leave_room
 import numpy as np
-import requests
+import requests, os, time, threading
 import tensorflow as tf
 from sklearn.preprocessing import MinMaxScaler
 from dotenv import load_dotenv
-import os, time
 
 load_dotenv()
 
@@ -16,6 +16,9 @@ API_KEY = os.getenv("TWELVE_API_KEY")
 # Configure CORS
 CORS(app, origins=[FRONTEND_URL])
 
+# Add SocketIO
+socketio = SocketIO(app, cors_allowed_origins="*")
+
 # Load model
 model_path = "stock_model_multihorizon_keras.keras"
 model = tf.keras.models.load_model(model_path)
@@ -25,11 +28,8 @@ CACHE = {}
 CACHE_TTL = 60  # seconds
 
 def cached_fetch(symbol, interval="1day", outputsize=100):
-    """Fetch stock data from Twelve Data with caching"""
     key = f"{symbol}_{interval}_{outputsize}"
     now = time.time()
-
-    # Return cached result if fresh
     if key in CACHE and now - CACHE[key]["time"] < CACHE_TTL:
         return CACHE[key]["data"]
 
@@ -40,8 +40,7 @@ def cached_fetch(symbol, interval="1day", outputsize=100):
         if "values" not in data:
             print("❌ Error from Twelve Data:", data)
             return None
-
-        df = data["values"][::-1]  # reverse chronological order
+        df = data["values"][::-1]
         CACHE[key] = {"data": df, "time": now}
         return df
     except Exception as e:
@@ -53,27 +52,22 @@ def get_stock_input(symbol):
     df = cached_fetch(symbol)
     if not df or len(df) < 100:
         return None, None
-
-    # Extract close prices
     closes = [float(item["close"]) for item in df[-100:]]
     data = np.array(closes).reshape(-1, 1)
-
     scaler = MinMaxScaler(feature_range=(0, 1))
     data_scaled = scaler.fit_transform(data)
-
     return np.array([data_scaled]), scaler
 
 
+# --------- REST Endpoints ---------
 @app.route('/api/predict', methods=['POST'])
 def predict():
     try:
         data = request.json
-        symbol = data.get("ticker", "AAPL")  # Default to Apple
-
+        symbol = data.get("ticker", "AAPL")
         X_input, scaler = get_stock_input(symbol)
-        if X_input is None or scaler is None:
+        if X_input is None:
             return jsonify({"error": f"Invalid symbol '{symbol}' or insufficient data"}), 400
-
         y_pred = model.predict(X_input)
         predictions = {
             "1_day": round(float(scaler.inverse_transform(y_pred)[0][0]), 2),
@@ -81,10 +75,7 @@ def predict():
             "1_month": round(float(scaler.inverse_transform(y_pred)[0][2]), 2),
             "1_year": round(float(scaler.inverse_transform(y_pred)[0][3]), 2)
         }
-
-        print(f"✅ Predictions for {symbol}: {predictions}")
         return jsonify(predictions)
-
     except Exception as e:
         print("❌ Prediction Error:", str(e))
         return jsonify({"error": "Prediction failed"}), 500
@@ -96,24 +87,66 @@ def simulate():
         data = request.json
         symbol = data.get("ticker", "AAPL")
         interval = data.get("interval", "1h")
-
         df = cached_fetch(symbol, interval=interval, outputsize=200)
         if not df:
             return jsonify({"error": "No data available"}), 400
-
         timestamps = [item["datetime"] for item in df]
         prices = [float(item["close"]) for item in df]
-
         return jsonify({
             "ticker": symbol,
             "timestamps": timestamps,
             "prices": prices
         })
-
     except Exception as e:
         print("❌ Simulation Error:", str(e))
         return jsonify({"error": "Simulation failed"}), 500
 
 
-if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
+# --------- SOCKET.IO ---------
+clients = {}
+
+@socketio.on("subscribeStock")
+def handle_subscribe(symbol):
+    print(f"📡 Client subscribed to {symbol}")
+    join_room(symbol)
+    clients[request.sid] = symbol
+
+    # send initial data
+    df = cached_fetch(symbol, interval="1min", outputsize=30)
+    if df:
+        timestamps = [item["datetime"] for item in df]
+        prices = [float(item["close"]) for item in df]
+        emit("stockData", {
+            "ticker": symbol,
+            "timestamps": timestamps,
+            "prices": prices
+        }, room=request.sid)
+
+
+@socketio.on("unsubscribeStock")
+def handle_unsubscribe(symbol):
+    print(f"❌ Client unsubscribed from {symbol}")
+    leave_room(symbol)
+    if request.sid in clients:
+        del clients[request.sid]
+
+
+# background job to push updates
+def push_updates():
+    while True:
+        for sid, symbol in list(clients.items()):
+            df = cached_fetch(symbol, interval="1min", outputsize=1)
+            if df:
+                latest = df[-1]
+                emit("stockUpdate", {
+                    "ticker": symbol,
+                    "price": float(latest["close"]),
+                    "timestamp": latest["datetime"]
+                }, room=symbol)
+        time.sleep(10)  # fetch every 10s
+
+
+threading.Thread(target=push_updates, daemon=True).start()
+
+if __name__ == "__main__":
+    socketio.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 5000)))

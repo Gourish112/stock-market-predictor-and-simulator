@@ -80,18 +80,31 @@ def predict():
         print("❌ Prediction Error:", str(e))
         return jsonify({"error": "Prediction failed"}), 500
 
+INTERVAL_MAP = {
+    "real-time": "1min",   
+    "1d": "1day",
+    "5d": "1week",  
+    "1mo": "1month"
+}
 
+def map_interval(interval):
+    return INTERVAL_MAP.get(interval, "1day") 
 @app.route('/simulate', methods=['POST'])
 def simulate():
     try:
         data = request.json
         symbol = data.get("ticker", "AAPL")
-        interval = data.get("interval", "1h")
+        frontend_interval = data.get("interval", "1d")
+
+        interval = map_interval(frontend_interval)
+
         df = cached_fetch(symbol, interval=interval, outputsize=200)
         if not df:
             return jsonify({"error": "No data available"}), 400
+
         timestamps = [item["datetime"] for item in df]
         prices = [float(item["close"]) for item in df]
+
         return jsonify({
             "ticker": symbol,
             "timestamps": timestamps,

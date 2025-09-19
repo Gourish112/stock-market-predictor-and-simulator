@@ -381,9 +381,6 @@ const Simulator = () => {
           <option value="1d">1 Day</option>
           <option value="5d">5 Days</option>
           <option value="1mo">1 Month</option>
-          <option value="3mo">3 Months</option>
-          <option value="6mo">6 Months</option>
-          <option value="1y">1 Year</option>
         </select>
         
         <button 

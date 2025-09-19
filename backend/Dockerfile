@@ -24,7 +24,7 @@ RUN pip install -r requirements.txt
 
 # Explicitly reinstall gunicorn and eventlet to ensure compatibility
 # This step is critical for resolving the 'ALREADY_HANDLED' error
-RUN pip install "gunicorn==20.1.0" "eventlet==0.33.3"
+RUN pip install "gunicorn==20.1.0" "eventlet==0.30.2"
 
 # Copy project files
 COPY . .

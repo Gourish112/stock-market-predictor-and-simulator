@@ -22,9 +22,9 @@ COPY requirements.txt .
 RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
 
-# Explicitly reinstall gunicorn and eventlet to ensure compatibility
-# This step is critical for resolving the 'ALREADY_HANDLED' error
-RUN pip install "gunicorn==20.1.0" "eventlet==0.30.2"
+# ✅ Do NOT force eventlet — remove it
+# If eventlet/gevent are in requirements.txt, delete them there too
+RUN pip uninstall -y eventlet gevent || true
 
 # Copy project files
 COPY . .
@@ -39,5 +39,7 @@ EXPOSE 5000
 RUN adduser --disabled-password --gecos '' myuser
 USER myuser
 
-# Start app with gunicorn + eventlet
-CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:5000", "--timeout", "120"]
+# ✅ Use Gunicorn with gthread (built-in threading)
+# -w 1   → single worker (so sessions don't break)
+# --threads 4 → allow multiple socket clients
+CMD ["gunicorn", "app:app", "-k", "gthread", "-w", "1", "--threads", "4", "--bind", "0.0.0.0:5000", "--timeout", "120"]

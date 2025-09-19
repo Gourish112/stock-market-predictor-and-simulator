@@ -40,4 +40,4 @@ RUN adduser --disabled-password --gecos '' myuser
 USER myuser
 
 # Start app with gunicorn + eventlet
-CMD ["gunicorn", "--worker-class", "eventlet", "-w", "1", "-b", "0.0.0.0:5000", "app:app"]
+CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:5000", "--workers", "1", "--timeout", "120"]

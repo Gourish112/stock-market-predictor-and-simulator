@@ -81,14 +81,16 @@ def predict():
         return jsonify({"error": "Prediction failed"}), 500
 
 INTERVAL_MAP = {
-    "real-time": "1min",   
-    "1d": "1day",
-    "5d": "1week",  
-    "1mo": "1month"
+    "real-time": {"interval": "1min", "outputsize": 30},   # last 30 min
+    "1d": {"interval": "1day", "outputsize": 30},          # ~1 month daily
+    "5d": {"interval": "1day", "outputsize": 5},           # exactly 5 days
+    "1mo": {"interval": "1day", "outputsize": 30},         # ~1 month daily
+    "3mo": {"interval": "1day", "outputsize": 90},         # ~3 months
+    "6mo": {"interval": "1day", "outputsize": 180},        # ~6 months
+    "1y": {"interval": "1day", "outputsize": 365},         # 1 year daily
 }
 
-def map_interval(interval):
-    return INTERVAL_MAP.get(interval, "1day") 
+
 @app.route('/simulate', methods=['POST'])
 def simulate():
     try:
@@ -96,9 +98,11 @@ def simulate():
         symbol = data.get("ticker", "AAPL")
         frontend_interval = data.get("interval", "1d")
 
-        interval = map_interval(frontend_interval)
+        mapping = INTERVAL_MAP.get(frontend_interval, {"interval": "1day", "outputsize": 30})
+        interval = mapping["interval"]
+        outputsize = mapping["outputsize"]
 
-        df = cached_fetch(symbol, interval=interval, outputsize=200)
+        df = cached_fetch(symbol, interval=interval, outputsize=outputsize)
         if not df:
             return jsonify({"error": "No data available"}), 400
 
@@ -113,6 +117,7 @@ def simulate():
     except Exception as e:
         print("❌ Simulation Error:", str(e))
         return jsonify({"error": "Simulation failed"}), 500
+
 
 
 # --------- SOCKET.IO ---------

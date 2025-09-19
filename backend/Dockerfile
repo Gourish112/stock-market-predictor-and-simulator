@@ -20,7 +20,9 @@ COPY requirements.txt .
 
 # Upgrade pip and install dependencies
 RUN pip install --upgrade pip
-RUN pip install -r requirements.txt && pip install gunicorn eventlet==0.33.3 redis
+RUN pip install -r requirements.txt
+# Pin gunicorn to a compatible version and reinstall eventlet with it
+RUN pip install "gunicorn==20.1.0" "eventlet==0.33.3"
 
 # Copy project files
 COPY . .
@@ -37,7 +39,3 @@ USER myuser
 
 # Start app with gunicorn + eventlet
 CMD ["gunicorn", "--worker-class", "gunicorn.workers.geventlet.EventletWorker", "-w", "1", "-b", "0.0.0.0:5000", "app:app"]
-
-
-
-

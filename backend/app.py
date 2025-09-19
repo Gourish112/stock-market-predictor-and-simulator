@@ -17,7 +17,7 @@ API_KEY = os.getenv("TWELVE_API_KEY")
 CORS(app, origins=[FRONTEND_URL])
 
 # Add SocketIO
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*",async_mode="threading")
 
 # Load model
 model_path = "stock_model_multihorizon_keras.keras"

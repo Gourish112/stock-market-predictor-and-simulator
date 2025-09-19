@@ -1,13 +1,11 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from flask_socketio import SocketIO, emit
 import numpy as np
 import requests
 import tensorflow as tf
 from sklearn.preprocessing import MinMaxScaler
 from dotenv import load_dotenv
-import os
-import time
+import os, time
 
 load_dotenv()
 
@@ -15,9 +13,8 @@ app = Flask(__name__)
 FRONTEND_URL = os.getenv("CORS_ORIGIN")
 API_KEY = os.getenv("TWELVE_API_KEY")
 
-# Configure CORS for both Flask and Flask-SocketIO
-CORS(app, origins=FRONTEND_URL)
-socketio = SocketIO(app, cors_allowed_origins=FRONTEND_URL)
+# Configure CORS
+CORS(app, origins=[FRONTEND_URL])
 
 # Load model
 model_path = "stock_model_multihorizon_keras.keras"
@@ -98,7 +95,6 @@ def simulate():
     try:
         data = request.json
         symbol = data.get("ticker", "AAPL")
-        # Ensure the interval is supported by the API (e.g., '1h', not '3mo')
         interval = data.get("interval", "1h")
 
         df = cached_fetch(symbol, interval=interval, outputsize=200)
@@ -119,22 +115,5 @@ def simulate():
         return jsonify({"error": "Simulation failed"}), 500
 
 
-# --- WebSocket Events ---
-@socketio.on('connect')
-def handle_connect():
-    print('Client connected')
-
-@socketio.on('disconnect')
-def handle_disconnect():
-    print('Client disconnected')
-
-# You can add more socketio event handlers here if needed.
-# For example, to handle custom events from the client:
-# @socketio.on('my_event')
-# def handle_my_custom_event(json):
-#     print('received json: ' + str(json))
-#     emit('my_response', json)
-
 if __name__ == '__main__':
-    # Use socketio.run() instead of app.run() to start the server
-    socketio.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))

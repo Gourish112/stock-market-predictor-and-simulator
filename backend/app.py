@@ -82,7 +82,7 @@ def predict():
 
 INTERVAL_MAP = {
     "real-time": {"interval": "1min", "outputsize": 30},   # ~30 minutes
-    "1d": {"interval": "5min", "outputsize": 288},         # 5-min candles → 288 in 24h
+    "1d": {"interval": "5min", "outputsize": 78},         # 5-min candles → 288 in 24h
     "5d": {"interval": "30min", "outputsize": 200},        # 5 days with half-hour candles
     "1mo": {"interval": "1day", "outputsize": 30},         # ~1 month daily
     "3mo": {"interval": "1day", "outputsize": 90},         # ~3 months

@@ -24,7 +24,6 @@ RUN pip install -r requirements.txt
 
 # ✅ Do NOT force eventlet — remove it
 # If eventlet/gevent are in requirements.txt, delete them there too
-RUN pip uninstall -y eventlet gevent || true
 
 # Copy project files
 COPY . .

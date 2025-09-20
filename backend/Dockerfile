@@ -41,5 +41,6 @@ USER myuser
 # ✅ Use Gunicorn with gthread (built-in threading)
 # -w 1   → single worker (so sessions don't break)
 # --threads 4 → allow multiple socket clients
-CMD ["gunicorn", "-k", "eventlet", "-w", "1", "--bind", "0.0.0.0:5000", "app:app"]
+CMD ["python", "app.py"]
+
 

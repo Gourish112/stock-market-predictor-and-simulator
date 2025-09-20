@@ -166,4 +166,4 @@ def push_updates():
 threading.Thread(target=push_updates, daemon=True).start()
 
 if __name__ == "__main__":
-    socketio.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
+    socketio.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 5000)), debug=False)

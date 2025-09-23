@@ -118,6 +118,9 @@ def simulate():
         return jsonify({"error": "Simulation failed"}), 500
 
 
+@app.route("/cron", methods=["GET"])
+def cron_job():
+    return jsonify({"status": "ok", "message": "cron executed"}), 200
 
 # --------- SOCKET.IO ---------
 clients = {}

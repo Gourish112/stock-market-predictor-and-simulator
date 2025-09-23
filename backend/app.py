@@ -118,9 +118,24 @@ def simulate():
         return jsonify({"error": "Simulation failed"}), 500
 
 
+import threading
+
 @app.route("/cron", methods=["GET"])
 def cron_job():
-    return jsonify({"status": "ok", "message": "cron executed"}), 200
+    # Start background job in another thread
+    threading.Thread(target=do_heavy_job, daemon=True).start()
+    return jsonify({"status": "ok", "message": "cron triggered"}), 200
+
+
+def do_heavy_job():
+    """This runs outside the request lifecycle"""
+    print("⚡ Starting heavy background job...")
+    # Example: refresh stock cache
+    symbols = ["AAPL", "GOOG", "TSLA"]
+    for sym in symbols:
+        cached_fetch(sym, interval="1day", outputsize=100)
+    print("✅ Heavy job finished")
+
 
 # --------- SOCKET.IO ---------
 clients = {}

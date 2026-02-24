@@ -103,8 +103,8 @@ const Predictor = () => {
 const styles = {
     container: { marginTop: "60px", padding: "20px", display: "flex", flexDirection: "column", alignItems: "center", backgroundColor: "#121212", minHeight: "100vh" },
     heading: { color: "#fff", fontSize: "28px", marginBottom: "20px" },
-    inputContainer: { display: "flex", justifyContent: "center", alignItems: "center", gap: "10px", marginBottom: "20px" },
-    input: { padding: "12px", width: "200px", borderRadius: "6px", border: "1px solid #555", backgroundColor: "#1E1E1E", color: "#fff", fontSize: "16px", textAlign: "center" },
+    inputContainer: { display: "flex", justifyContent: "center", gap: "10px", flexWrap: "wrap"},
+    input: { padding: "12px", width: "100%",maxWidth: "250px", borderRadius: "6px", border: "1px solid #555", backgroundColor: "#1E1E1E", color: "#fff", fontSize: "16px", textAlign: "center" },
     dropdown: { padding: "12px", borderRadius: "6px", border: "1px solid #555", backgroundColor: "#1E1E1E", color: "#fff", fontSize: "16px", cursor: "pointer" },
     button: { padding: "12px 20px", backgroundColor: "#007BFF", border: "none", borderRadius: "6px", color: "#fff", cursor: "pointer", fontSize: "16px", fontWeight: "bold" },
     prediction: { color: "#4CAF50", fontSize: "20px", marginBottom: "15px" },

@@ -73,7 +73,7 @@ const styles = {
     overflow: "hidden",
   },
   heading: {
-    fontSize: "4rem",
+    fontSize: "clamp(2rem, 8vw, 4rem)",
     fontWeight: "bold",
     marginBottom: "10px",
     animation: "fadeIn 1.5s ease-in-out",
@@ -89,7 +89,7 @@ const styles = {
     textShadow: "0px 0px 15px rgba(255,0,0,0.8)",
   },
   typingText: {
-    fontSize: "1.6rem",
+    fontSize: "clamp(1rem, 4vw, 1.6rem)",
     marginBottom: "30px",
     opacity: 0.9,
     fontFamily: "monospace",
@@ -111,7 +111,8 @@ const styles = {
     backdropFilter: "blur(10px)",
     padding: "20px",
     borderRadius: "10px",
-    width: "300px",
+    width: "100%",
+    maxWidth: "320px",
     boxShadow: "0px 5px 15px rgba(0,0,0,0.5)",
     textAlign: "center",
     transition: "all 0.3s ease-in-out",

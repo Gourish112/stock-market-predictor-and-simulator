@@ -286,22 +286,21 @@ const Simulator = () => {
   return (
     <div className="simulator-container" style={{ 
       margin: "auto", 
+      marginTop: "60px",
       padding: "20px", 
       textAlign: "center", 
       backgroundColor: "rgb(18,18,18)", 
       color: "#fff", 
       minHeight: "100vh" 
     }}>
-      <h2 style={{ marginBottom: "20px" }}>Stock Market Simulator</h2>
+      <h2 style={{ marginBottom: "20px"}}>Stock Market Simulator</h2>
       
       {/* Portfolio Summary */}
       <div className="portfolio-summary" style={{ 
-        display: "flex", 
-        justifyContent: "space-around", 
-        backgroundColor: "#222", 
-        padding: "15px", 
-        borderRadius: "10px", 
-        marginBottom: "20px" 
+        display: "flex",
+        flexWrap: "wrap",
+        gap: "15px",
+        justifyContent: "center",
       }}>
         <div>
           <h3 style={{ color: "#aaa", fontSize: "14px", margin: "0" }}>Balance</h3>
@@ -448,7 +447,8 @@ const Simulator = () => {
         display: "flex", 
         justifyContent: "center", 
         alignItems: "center", 
-        height: "500px", 
+        height: "60vh",
+        minHeight: "300px", 
         backgroundColor: "rgb(30,30,30)", 
         padding: "10px", 
         borderRadius: "10px", 

@@ -4,13 +4,12 @@ import { Line } from "react-chartjs-2";
 import io from "socket.io-client";
 
 // Constants
-const API_URL = "http://127.0.0.1:5000";
 const DEFAULT_TICKER = "AAPL";
 const DEFAULT_INTERVAL = "real-time";
 const DEFAULT_EXCHANGE = "US";
 const US_STARTING_BALANCE = 10000;
 const IN_STARTING_BALANCE = 800000;
-
+const REACT_APP_API_URL = process.env.REACT_APP_API_URL;
 const Simulator = () => {
   // Core state
   const [stockData, setStockData] = useState({
@@ -37,7 +36,7 @@ const Simulator = () => {
   const [transactions, setTransactions] = useState([]);
 
   // Socket connection
-  const socket = useMemo(() => io(API_URL), []);
+  const socket = useMemo(() => io(REACT_APP_API_URL), []);
 
   // Update balance when exchange changes
   useEffect(() => {
@@ -50,7 +49,7 @@ const Simulator = () => {
     setError(null);
     
     try {
-      const response = await axios.post(`${API_URL}/simulate`, {
+      const response = await axios.post(`${REACT_APP_API_URL}/simulate`, {
         ticker: ticker,
         interval: selectedInterval,
         exchange: exchange,

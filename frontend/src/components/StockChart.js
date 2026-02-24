@@ -21,7 +21,8 @@ const StockChart = ({ ticker }) => {
         const fetchStockData = async () => {
             setLoading(true);
             try {
-                const response = await fetch(`http://localhost:5000/api/predict`, {
+                const REACT_APP_API_URL = process.env.REACT_APP_API_URL;
+                const response = await fetch(`${REACT_APP_API_URL}/api/predict`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ ticker }),
